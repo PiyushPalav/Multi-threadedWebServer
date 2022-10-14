@@ -62,6 +62,12 @@ int main(int argc, char *argv[]) {
     n = send(sockfd, buffer, strlen(buffer), 0);
     if (n < 0)
         error("ERROR writing to socket");
+
+    if (strncmp(buffer,"exit",4) == 0){
+      close(sockfd);
+      exit(1);
+    }
+    
     bzero(buffer, 256);
 
     /* read reply from server */
