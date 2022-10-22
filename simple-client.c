@@ -7,18 +7,48 @@
 
 #include <netdb.h>
 
+#include <sys/socket.h>
+#include <signal.h>
+#include <errno.h>
+
+int sockfd;
+
 void error(char *msg) {
   perror(msg);
-  exit(0);
+  exit(1);
+}
+
+void signal_handler(int sig) {
+  if(sig == SIGINT){
+    if (send(sockfd, "exit", 4, 0) < 0)
+        error("ERROR writing to socket");
+    close(sockfd);
+    exit(1);
+  }
+}
+
+void init_signal_handler(){
+	struct sigaction sa;
+	sa.sa_handler = &signal_handler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+
+	if (sigaction(SIGINT, &sa, 0) == -1) {
+		perror("Unable to change signal action for sigint");
+		exit(EXIT_SUCCESS);
+	}
 }
 
 int main(int argc, char *argv[]) {
-  int sockfd, portno, n;
+  //int sockfd, portno, n;
+  int portno, n;
 
   struct sockaddr_in serv_addr;
   struct hostent *server;
 
   char buffer[256];
+  init_signal_handler();
+
   if (argc < 3) {
     fprintf(stderr, "usage %s hostname port\n", argv[0]);
     exit(0);
@@ -60,8 +90,10 @@ int main(int argc, char *argv[]) {
     /* send user message to server */
 
     n = send(sockfd, buffer, strlen(buffer), 0);
-    if (n < 0)
+    if (n < 0){
+        close(sockfd);
         error("ERROR writing to socket");
+    }
 
     if (strncmp(buffer,"exit",4) == 0){
       close(sockfd);
@@ -73,10 +105,12 @@ int main(int argc, char *argv[]) {
     /* read reply from server */
 
     n = recv(sockfd, buffer, 255, 0);
-    if (n < 0)
+    if (n < 0){
+        close(sockfd);
         error("ERROR reading from socket");
+    }
     printf("Server response: %s", buffer);
   }
-
+  close(sockfd);
   return 0;
 }

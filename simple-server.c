@@ -14,12 +14,38 @@ void error(char *msg) {
   exit(1);
 }
 
+void *connection_handler(void *newsockfd) {
+  int client_sockfd = *((int *) newsockfd);
+
+  char buffer[256];
+  int n;
+
+  while (client_sockfd > 0) {
+    bzero(buffer, 256);
+    n = recv(client_sockfd, buffer, 255, 0);
+    if (n < 0)
+        error("ERROR reading from socket");
+
+    if (strncmp(buffer,"exit",4) == 0){
+      close(client_sockfd);
+      return 0;
+    }
+    printf("Here is the message: %s", buffer);
+
+    /* send reply to client */
+
+    n = send(client_sockfd, buffer, strlen(buffer), 0);
+    if (n < 0)
+        error("ERROR writing to socket");
+  }
+  return 0;
+ }
+
 int main(int argc, char *argv[]) {
   int sockfd, newsockfd, portno;
   socklen_t clilen;
-  char buffer[256];
   struct sockaddr_in serv_addr, cli_addr;
-  int n;
+  pthread_t thread_id;
 
   if (argc < 2) {
     fprintf(stderr, "ERROR, no port provided\n");
@@ -51,30 +77,18 @@ int main(int argc, char *argv[]) {
   listen(sockfd, 5);
   clilen = sizeof(cli_addr);
 
-  /* accept a new request, create a newsockfd */
-
-  newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
-  if (newsockfd < 0)
-    error("ERROR on accept");
-
   while (1)
   {
-    /* read message from client */
+    /* accept a new request, create a newsockfd */
 
-    bzero(buffer, 256);
-    n = recv(newsockfd, buffer, 255, 0);
-    if (n < 0)
-        error("ERROR reading from socket");
-    printf("Here is the message: %s", buffer);
+    newsockfd = accept(sockfd, (struct sockaddr *)&cli_addr, &clilen);
+    if (newsockfd < 0)
+      error("ERROR on accept");
 
-    /* send reply to client */
-
-    //n = write(newsockfd, "I got your message", 18);
-    n = send(newsockfd, buffer, strlen(buffer), 0);
-    if (n < 0)
-        error("ERROR writing to socket");
+    if(pthread_create(&thread_id, NULL, connection_handler, &newsockfd) < 0)
+      error("Could not create thread");
   }
-  
-
+  close(newsockfd);
+  close(sockfd);
   return 0;
 }
