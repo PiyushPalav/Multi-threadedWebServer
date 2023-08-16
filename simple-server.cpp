@@ -1,13 +1,19 @@
 /* run using ./server <port> */
 #include "http_server.h"
+#include "myqueue.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-
 #include <netinet/in.h>
-
 #include <pthread.h>
+
+#define BUFFER_SIZE 4096
+#define THREAD_POOL_SIZE 20
+
+pthread_t thread_pool[THREAD_POOL_SIZE];
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t condition_var = PTHREAD_COND_INITIALIZER;
 
 void error(const char *msg) {
   perror(msg);
@@ -16,12 +22,13 @@ void error(const char *msg) {
 
 void *connection_handler(void *newsockfd) {
   int client_sockfd = *((int *) newsockfd);
+  free(newsockfd);
 
-  char buffer[1024];
+  char buffer[BUFFER_SIZE];
   int n;
 
-  bzero(buffer, 1024);
-  n = recv(client_sockfd, buffer, 1023, 0);
+  bzero(buffer, BUFFER_SIZE);
+  n = recv(client_sockfd, buffer, BUFFER_SIZE-1, 0);
   if (n < 0)
       error("ERROR reading from socket");
 
@@ -48,17 +55,34 @@ void *connection_handler(void *newsockfd) {
 
   close(client_sockfd);
   return 0;
- }
+}
+
+void *thread_function(void *arg) {
+  while (true) {
+    pthread_mutex_lock(&mutex);
+    pthread_cond_wait(&condition_var, &mutex);
+    int* client_socket = dequeue();
+    pthread_mutex_unlock(&mutex);
+    if (client_socket != NULL) {
+      connection_handler(client_socket);
+    }
+  }
+}
 
 int main(int argc, char *argv[]) {
   int sockfd, newsockfd, portno;
   socklen_t clilen;
   struct sockaddr_in serv_addr, cli_addr;
-  pthread_t thread_id;
+  // pthread_t thread_id;
 
   if (argc < 2) {
     fprintf(stderr, "ERROR, no port provided\n");
     exit(1);
+  }
+
+  /* create worker threads*/
+  for (int i = 0; i < THREAD_POOL_SIZE; i++) {
+    pthread_create(&thread_pool[i], NULL, &thread_function, NULL);
   }
 
   /* create socket */
@@ -94,8 +118,15 @@ int main(int argc, char *argv[]) {
     if (newsockfd < 0)
       error("ERROR on accept");
 
-    if(pthread_create(&thread_id, NULL, connection_handler, &newsockfd) < 0)
-      error("Could not create thread");
+    int *client_socket = (int *)malloc(sizeof(int));
+    *client_socket = newsockfd;
+    pthread_mutex_lock(&mutex);
+    enqueue(client_socket);
+    pthread_cond_signal(&condition_var);
+    pthread_mutex_unlock(&mutex);
+
+    // if(pthread_create(&thread_id, NULL, connection_handler, &newsockfd) < 0)
+    //   error("Could not create thread");
   }
   close(sockfd);
   return 0;

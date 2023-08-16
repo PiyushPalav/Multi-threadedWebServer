@@ -11,6 +11,8 @@
 #include <signal.h>
 #include <errno.h>
 
+#define BUFFER_SIZE 4096
+
 int sockfd;
 
 void error(const char *msg) {
@@ -46,7 +48,7 @@ int main(int argc, char *argv[]) {
   struct sockaddr_in serv_addr;
   struct hostent *server;
 
-  char buffer[1024];
+  char buffer[BUFFER_SIZE];
   init_signal_handler();
 
   if (argc < 3) {
@@ -81,8 +83,8 @@ int main(int argc, char *argv[]) {
 
   /* ask user for input */
 
-  bzero(buffer, 1024);
-  fgets(buffer, 1023, stdin);
+  bzero(buffer, BUFFER_SIZE);
+  fgets(buffer, BUFFER_SIZE-1, stdin);
   
   /* send user message to server */
 
@@ -97,11 +99,11 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
   
-  bzero(buffer, 1024);
+  bzero(buffer, BUFFER_SIZE);
 
   /* read reply from server */
 
-  n = recv(sockfd, buffer, 1023, 0);
+  n = recv(sockfd, buffer, BUFFER_SIZE-1, 0);
   if (n < 0){
       close(sockfd);
       error("ERROR reading from socket");
